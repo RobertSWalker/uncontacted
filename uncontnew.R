@@ -1,17 +1,18 @@
-setwd("C:/Users/walkerro/Desktop/R scripts/uncont")
 fires <- read.csv('firesclean.csv')
 fires$yr <- as.numeric(gsub(".*/","",fires$acq_date))
 fires$yr[fires$latitude < -9.6 & fires$yr < 2016 ] <- NA
 fires$yr[fires$latitude < -9.57 & fires$latitude > -9.7 ] <- NA
 colSums(is.na(fires))
 fires <- na.omit(fires)
+table(fires$origin,fires$type)
 
 library(dplyr)
-afires <- fires[fires$site == 'acre',] %>% 
+afires <- fires[fires$site == 'acre' ,] %>%  #& fires$type == 'MODIS',
   group_by(yr) %>% 
-  summarise(sumfires = n())
-afires <- rbind(afires,c(2005, 1))
-afires <- rbind(afires,c(2015, 1))
+  summarise(sumfires = n()) #afires <- rbind(afires,c(2015, 1))
+afires <- rbind(afires, c(2001,0))
+afires <- rbind(afires, c(2005,0))
+afires <- rbind(afires, c(2015,0))
 
 library(RcppRoll)
 afires <- afires %>%
@@ -19,80 +20,30 @@ afires <- afires %>%
   #group_by(yr) %>%
   mutate(roll_sum = RcppRoll::roll_sum(sumfires, 3, align = "right", na.rm = T, fill = NA)) 
 sum(afires$sumfires)
-afires
 
 library(ggplot2);library(cowplot)
-#afires$yr <- afires$yr - 2000
-#add_nls <- nls(sumfires ~ a*exp(r*yr), data=afires, start = list(a = 0.5, r = 0.2))
-#coef(add_nls)
-#plot(afires$yr, resid(add_nls))
-#abline(h = 0, lty = 2)
-
-#m1 acre fire model 1 yr
-library(brms);library(rstan);options(mc.cores = parallel::detectCores());rstan_options(auto_write = TRUE)
-m1 <- brm(data = afires, family = gaussian(link = "identity"),
-         log(sumfires) ~ 1  + yr ,# + (1|phyla),
-         prior = set_prior("normal(0,.1)", class = "b"), # group = ""),
-         iter =  2e3, chains = 4, cores = 4, #save_all_pars = TRUE,
-         control = list(adapt_delta = .999, max_treedepth = 20),
-         seed = 14, backend = "cmdstanr")
-prior_summary(m1)
-m1 #.11
-pl <- plot(m1, N = 4, ask = FALSE) #Trace and Density Plots for MCMC Samples
-posterior_summary(m1)
-bayes_R2(m1) #.44
-conditional_effects(m1, points=T)
-#saveRDS(m1,"m1.Rds")
-m1 <- readRDS("m1.Rds") #ranef(m1)
-
-mult_lm <- lm(log(sumfires) ~ yr, data=afires)
-coef(mult_lm) #exp(mult_lm$coefficients[1])
-plot(afires$yr, resid(mult_lm))
-abline(h = 0, lty = 2)
-#.12
-log(2)/(coef(mult_lm)[2])
-
-#m2 acre fire model 3 yr
-m2 <- brm(data = afires, family = gaussian(link = "identity"),
-          log(roll_sum) ~ 1  + yr ,# + (1|phyla),
-          prior = set_prior("normal(0,.1)", class = "b"), # group = ""),
-          iter =  2e3, chains = 4, cores = 4, #save_all_pars = TRUE,
-          control = list(adapt_delta = .999, max_treedepth = 20),
-          seed = 14, backend = "cmdstanr")
-prior_summary(m2)
-m2 #.13
-pl <- plot(m2, N = 4, ask = FALSE) #Trace and Density Plots for MCMC Samples
-posterior_summary(m2)
-bayes_R2(m2) #.82
-conditional_effects(m2, points=T)
-#saveRDS(m2,"m2.Rds")
-m2 <- readRDS("m2.Rds") #ranef(m1)
-
-mult_lm2 <- lm(log(roll_sum) ~ yr, data=afires)
-coef(mult_lm2) #exp(mult_lm$coefficients[1])
-#.123
-log(2)/(coef(mult_lm2)[2])
-
-log.model <-lm(log(sumfires) ~ yr, afires)
-#exp.model <-lm(sumfires ~ exp(yr), afires[afires$sumfires > 0,])
-summary(log.model2 <-lm(log(roll_sum) ~ yr, afires))
-log.model.df <- data.frame(x = afires$yr, y = exp(fitted(log.model)))
-log.model.df2 <- data.frame(x = afires$yr, y = c(NA, NA, exp(fitted(log.model2))))
-
 (a <- ggplot() + 
   geom_col(data=afires, aes(x=yr, y=sumfires), color = 'red') +
-  geom_point(data=afires, aes(x=yr, y=roll_sum), size = 3, color = 'blue') +
-  geom_line(data = log.model.df, aes(x, y, color = "Log Model"), size = 1, linetype = 1, color = 'red') +
-  geom_line(data = log.model.df2, aes(x, y, color = "Log Model2"), size = 1, linetype = 2, color = 'blue') +
+  geom_point(data=afires, aes(x=yr, y=roll_sum), size = 2, color = 'blue') +
+  #geom_line(data = log.model.df, aes(x, y, color = "Log Model"), size = 1, linetype = 1, color = 'red') +
+  #geom_line(data = log.model.df2, aes(x, y, color = "Log Model2"), size = 1, linetype = 2, color = 'blue') +
+    geom_smooth(data=afires, aes(x=yr, y=roll_sum), size = 1, color = 'blue') +
     scale_x_continuous(breaks = c(2005,2010,2015,2020), limits = c(2000,2023), expand = c(0, 0))  +
+    #scale_y_continuous(breaks = c(3,6,9,12), limits = c(0,13), expand = c(0, 0))  +
     #guides(fill = 'none')  +
-  ylab("Fires") + xlab("Year") +
+    scale_y_continuous(expand = c(0, 0))  +
+  geom_vline(xintercept = 2011.5, linetype=3) +
+  ylab("Fire detections") + xlab("Year") +
   theme_cowplot() +
   #theme(legend.position="none") 
-  annotate('text', x=2017.5, y=34, label= "3 year sum", color = 'blue', size = 4) +
-  annotate("text", x=2017.5, y=14.5, label= "Single year", color = 'red', size = 4) 
+  annotate('text', x=2017.5, y=32, label= "3 year sum", color = 'blue', size = 4) +
+    annotate('text', x=2010, y=35, label= "MODIS\ndetections", color = 'black', size = 4) +
+    annotate('text', x=2013.5, y=35, label= "MODIS+VIIRS\ndetections", color = 'black', size = 4) +
+    annotate("text", x=2018, y=12, label= "Single year", color = 'red', size = 4) 
   )
   #guides(color = guide_legend(""))
+
+summary(lm(log(roll_sum) ~ yr, afires[afires$yr >= 2012,])) #.14
 
 #acre deforest
 r <- terra::rast("clippedhansenacre.tif")
@@ -137,50 +88,12 @@ df <- df %>%
   #group_by(yr) %>%
   mutate(roll_sum = RcppRoll::roll_sum(sumha, 3, align = "right", na.rm = T, fill = NA)) 
 
+summary(lm(log(roll_sum) ~ year, df[df$year >= 2015,])) #.18
+
 #fires + deforest correlations
-merge <- merge(afires, df, by.x = "yr", by.y = "year")
-cor(merge$roll_sum.y, merge$roll_sum.x, use = "pairwise.complete.obs")
-cor(merge$sumfires, merge$sumha, use = "pairwise.complete.obs")
-
-
-#m3 acre deforest model 1 yr
-m3 <- brm(data = df, family = gaussian(link = "identity"),
-          log(sumha) ~ 1  + year ,# + (1|phyla),
-          prior = set_prior("normal(0,.1)", class = "b"), # group = ""),
-          iter =  2e3, chains = 4, cores = 4, #save_all_pars = TRUE,
-          control = list(adapt_delta = .999, max_treedepth = 20),
-          seed = 14, backend = "cmdstanr")
-prior_summary(m3)
-m3 #.12
-pl <- plot(m3, N = 4, ask = FALSE) #Trace and Density Plots for MCMC Samples
-posterior_summary(m3)
-bayes_R2(m3) #.74
-conditional_effects(m3, points=T)
-#saveRDS(m3,"m3.Rds")
-m3 <- readRDS("m3.Rds") #ranef(m1)
-
-summary(mult_lm <- lm(log(sumha) ~ year, data=df))
-coef(mult_lm) #exp(mult_lm$coefficients[1])
-plot(df$year, resid(mult_lm))
-abline(h = 0, lty = 2)
-#.12
-log(2)/(coef(mult_lm)[2])
-
-#m4 acre deforest model 3 yr
-m4 <- brm(data = df, family = gaussian(link = "identity"),
-          log(roll_sum) ~ 1  + year ,# + (1|phyla),
-          prior = set_prior("normal(0,.1)", class = "b"), # group = ""),
-          iter =  2e3, chains = 4, cores = 4, #save_all_pars = TRUE,
-          control = list(adapt_delta = .999, max_treedepth = 20),
-          seed = 14, backend = "cmdstanr")
-prior_summary(m4)
-m4 #.12
-pl <- plot(m4, N = 4, ask = FALSE) #Trace and Density Plots for MCMC Samples
-posterior_summary(m4)
-bayes_R2(m4) #.89
-conditional_effects(m4, points=T)
-#saveRDS(m4,"m4.Rds")
-m4 <- readRDS("m4.Rds") #ranef(m1)
+#merge <- merge(afires, df, by.x = "yr", by.y = "year")
+#cor(merge$roll_sum.y, merge$roll_sum.x, use = "pairwise.complete.obs")
+#cor(merge$sumfires, merge$sumha, use = "pairwise.complete.obs")
 
 summary(mult_lm2 <- lm(log(roll_sum) ~ year, data=df))
 coef(mult_lm2) #exp(mult_lm$coefficients[1])
@@ -196,17 +109,34 @@ log.model.df2 <- data.frame(x = df$year, y = c(NA, NA, exp(fitted(log.model2))))
 
 (b <- ggplot() + 
   geom_col(data=df, aes(x=year, y=sumha), color = 'red') +
-  geom_point(data=df, aes(x=year, y=roll_sum), size = 3, color = 'blue') +
-  geom_line(data = log.model.df, aes(x, y, color = "Log Model"), size = 1, linetype = 1, color = 'red') +
-  geom_line(data = log.model.df2, aes(x, y, color = "Log Model2"), size = 1, linetype = 2, color = 'blue') +
+  geom_point(data=df, aes(x=year, y=roll_sum), size = 2, color = 'blue') +
+  #geom_line(data = log.model.df, aes(x, y, color = "Log Model"), size = 1, linetype = 1, color = 'red') +
+  #geom_line(data = log.model.df2, aes(x, y, color = "Log Model2"), size = 1, linetype = 2, color = 'blue') +
   #guides(fill = 'none')  +
+  geom_smooth(data=df, aes(x=year, y=roll_sum), size = 1, color = 'blue') +
   scale_x_continuous(breaks = c(2005,2010,2015,2020), limits = c(2000,2023), expand = c(0, 0))  +
-  ylab("Cleared area (ha)") + xlab("Year") +
+  scale_y_continuous(expand = c(0, 5))  +
+    ylab("Cleared area (ha)") + xlab("Year") +
   theme_cowplot() +
-  #theme(legend.position="none") 
+  geom_vline(xintercept = 2014.5, linetype=3) +
+    #theme(legend.position="none")
+  annotate('text', x=2022, y=5, label= "NA", color = 'black', size = 4) +
   annotate('text', x=2017.5, y=115, label= "3 year sum", color = 'blue', size = 4) +
+  annotate('text', x=2016, y=145, label= "Enhanced\ndetection", color = 'black', size = 4) +
+  annotate('text', x=2013, y=145, label= "Version 1.0", color = 'black', size = 4) +
   annotate("text", x=2017.5, y=45, label= "Single year", color = 'red', size = 4)  )
 #guides(color = guide_legend(""))
+
+figure <- ggarrange(a, b, #c, d,
+                    #label.x = c(.1, .1, .1, .1, .1, .1), 
+                    #  hjust=c(-.3, -.3), vjust=0,
+                    #  label.y = .9, label.x = .3,
+                    # labels = c("Stone", "Steel", "Stone", "Steel"),
+                    ncol = 1, nrow = 2, align="hv")
+figure
+ggsave("fig3 acre time.pdf", dpi=300, units = "in", height = 8, width=8)
+
+#https://www.globalforestwatch.org/blog/data-and-research/tree-cover-loss-satellite-data-trend-analysis/
 
 s <- aggregate(s, fact=10, fun="modal")
 test_df <- as.data.frame(s, xy=T)
@@ -292,15 +222,6 @@ figure <- ggarrange(c, d,
 figure
 ggsave("fig2 acre.pdf", dpi=1000) #, units = "in", height = 6, width=8)
 
-figure <- ggarrange(a, b, #c, d,
-                    #label.x = c(.1, .1, .1, .1, .1, .1), 
-                  #  hjust=c(-.3, -.3), vjust=0,
-                  #  label.y = .9, label.x = .3,
-                   # labels = c("Stone", "Steel", "Stone", "Steel"),
-                    ncol = 1, nrow = 2, align="hv")
-figure
-ggsave("fig3 acre time.pdf", dpi=300, units = "in", height = 8, width=8)
-
 
 
 
@@ -337,75 +258,52 @@ df <- test_df %>%
   group_by(year) %>% 
   summarise(sumha = 0.07686 * n())
 sum(df$sumha)
-df <- rbind(df, c(2008,1))
+df <- rbind(df, c(2008,0))
+df <- rbind(df, c(2021,0))
 
 df <- df %>%
   arrange(year) %>%
   #group_by(yr) %>%
-  mutate(roll_sum = RcppRoll::roll_sum(sumha, 6, align = "right", na.rm = T, fill = NA)) 
+  mutate(roll_sum = RcppRoll::roll_sum(sumha, 3, align = "right", na.rm = T, fill = NA)) 
 df
-#m5 yan deforest model 1 yr
-m5 <- brm(data = df, family = gaussian(link = "identity"),
-          log(sumha) ~ 1  + year ,# + (1|phyla),
-          prior = set_prior("normal(0,.1)", class = "b"), # group = ""),
-          iter =  2e3, chains = 4, cores = 4, #save_all_pars = TRUE,
-          control = list(adapt_delta = .999, max_treedepth = 20),
-          seed = 14, backend = "cmdstanr")
-prior_summary(m5)
-m5 #.09
-pl <- plot(m5, N = 4, ask = FALSE) #Trace and Density Plots for MCMC Samples
-posterior_summary(m5)
-bayes_R2(m5) #.16
-conditional_effects(m5, points=T)
-#saveRDS(m5,"m5.Rds")
-m5 <- readRDS("m5.Rds") #ranef(m1)
 
-summary(mult_lm <- lm(log(sumha) ~ year, data=df))
-coef(mult_lm) #exp(mult_lm$coefficients[1])
-plot(df$year, resid(mult_lm))
-abline(h = 0, lty = 2)
+#summary(mult_lm <- lm(log(sumha) ~ year, data=df))
+#coef(mult_lm) #exp(mult_lm$coefficients[1])
+#plot(df$year, resid(mult_lm))
+#abline(h = 0, lty = 2)
 #.11
-log(2)/(coef(mult_lm)[2])
+#log(2)/(coef(mult_lm)[2])
 
-#m6 yan deforest model 1 yr
-m6 <- brm(data = df, family = gaussian(link = "identity"),
-          log(roll_sum) ~ 1  + year ,# + (1|phyla),
-          prior = set_prior("normal(0,.1)", class = "b"), # group = ""),
-          iter =  2e3, chains = 4, cores = 4, #save_all_pars = TRUE,
-          control = list(adapt_delta = .999, max_treedepth = 20),
-          seed = 14, backend = "cmdstanr")
-prior_summary(m6)
-m6
-pl <- plot(m6, N = 4, ask = FALSE) #Trace and Density Plots for MCMC Samples
-posterior_summary(m6)
-bayes_R2(m6) #.88
-conditional_effects(m6, points=T)
-#saveRDS(m6,"m6.Rds")
-m6 <- readRDS("m6.Rds") #ranef(m1)
-
-mult_lm2 <- lm(log(roll_sum) ~ year, data=df)
-coef(mult_lm2) #exp(mult_lm$coefficients[1])
+#mult_lm2 <- lm(log(roll_sum) ~ year, data=df)
+#coef(mult_lm2) #exp(mult_lm$coefficients[1])
 #.13
-log(2)/log((1+coef(mult_lm2)[2]))
-1/log2(1+coef(mult_lm2)[2])
+#log(2)/log((1+coef(mult_lm2)[2]))
+#1/log2(1+coef(mult_lm2)[2])
 
-log.model <-lm(log(sumha) ~ year, df)
+#log.model <-lm(log(sumha) ~ year, df)
 #exp.model <-lm(sumfires ~ exp(yr), afires[afires$sumfires > 0,])
-log.model2 <-lm(log(roll_sum) ~ year, df)
-log.model.df <- data.frame(x = df$year, y = exp(fitted(log.model)))
-log.model.df2 <- data.frame(x = df$year, y = c(rep(NA,5), exp(fitted(log.model2))))
+#log.model2 <-lm(log(roll_sum) ~ year, df)
+#log.model.df <- data.frame(x = df$year, y = exp(fitted(log.model)))
+#log.model.df2 <- data.frame(x = df$year, y = c(rep(NA,5), exp(fitted(log.model2))))
+
 
 (e <- ggplot() + 
   geom_col(data=df, aes(x=year, y=sumha), color = 'red') +
-  geom_point(data=df, aes(x=year, y=roll_sum), size = 3, color = 'blue') +
-  geom_line(data = log.model.df, aes(x, y, color = "Log Model"), size = 1, linetype = 1, color = 'red') +
-  geom_line(data = log.model.df2, aes(x, y, color = "Log Model2"), size = 1, linetype = 2, color = 'blue') +
-  #guides(fill = 'none')  +
+  geom_point(data=df, aes(x=year, y=roll_sum), size = 2, color = 'blue') +
+  #geom_line(data = log.model.df, aes(x, y, color = "Log Model"), size = 1, linetype = 1, color = 'red') +
+  #geom_line(data = log.model.df2, aes(x, y, color = "Log Model2"), size = 1, linetype = 2, color = 'blue') +
+    geom_smooth(data=df, aes(x=year, y=roll_sum), size = 1, color = 'blue') +
+    #guides(fill = 'none')  +
   ylab("Cleared area (ha)") + xlab("Year") +
+  scale_x_continuous(breaks = c(2005,2010,2015,2020), limits = c(2000,2022), expand = c(0, .1))  +
+  scale_y_continuous(breaks = c(5,10,15,20), limits = c(0,24), expand = c(0, .5))  +
+  geom_vline(xintercept = 2014.5, linetype=3) +
+  annotate('text', x=2017, y=22, label= "Enhanced detection", color = 'black', size = 4) +
+  annotate('text', x=2013, y=22, label= "Version 1.0", color = 'black', size = 4) +
   theme_cowplot() +
   #theme(legend.position="none") 
-  annotate('text', x=2017.5, y=32, label= "6 year sum", color = 'blue', size = 4) +
-  annotate("text", x=2017.5, y=8, label= "Single\nyear", color = 'red', size = 4) 
+  annotate('text', x=2019.5, y=16, label= "3 year sum", color = 'blue', size = 4) +
+  annotate("text", x=2017.5, y=6, label= "Single\nyear", color = 'red', size = 4) 
 )
 #guides(color = guide_legend(""))
 
@@ -416,7 +314,9 @@ names(test_df) <- c('x', 'y', 'year')
 (f <- ggplot(world) +
   geom_sf(fill="gray95") + 
   geom_raster(data = test_df, mapping = aes(x=x, y=y, color=year, fill=year)) +
+  #geom_point(data = test_df, aes(x = x, y = y, color=year, fill=year), alpha = 1, size = 1) +
   scale_fill_viridis_c(option="C", name = "", na.value = NA, direction =-1) + #A - E...
+  #scale_color_viridis_b(option="C", name = "Year", direction =-1) + #A - E...
   coord_sf(xlim = c(-62.8, -62.64), ylim = c(2.4, 2.55), expand = FALSE) +
  # guides(fill = 'none')  +
   annotation_scale(location = "br", width_hint = 0.3) +
@@ -445,178 +345,6 @@ figure <- ggarrange(f, e, #c, d,
 figure
 ggsave("fig4 yan.pdf", dpi=300, units = "in", height = 8, width=8)
 
-#posterior plots
-library(bayesplot)
-color_scheme_set("red")
-posterior <- as.array(m1)
-plt1 <- mcmc_areas(
-  posterior, 
-  pars = c("b_yr"),
-  prob = 0.95, # 80% intervals
-  #prob_outer = 0.99, # 99%
-  point_est = "mean"#  border_size = .1
-)
-plt1
-plot1 <- plt1 + 
-  ylab("") + #xlab("Exponential growth parameter") +
-  scale_y_continuous(expand = c(0,0)) +
-  #expand_limits(y = 2) +
-  geom_vline(xintercept=0, linetype=2) +
-  #ylim(0,1)+
-  theme_cowplot() +
-  annotate('text', x=-.05, y=1.5, label= "Fires\n(Acre)", size = 4) +
-  scale_y_discrete(labels = c(''), expand = c(0.0, 0.)) +
-  scale_x_continuous(limits = c(-.09,.25), breaks = round(seq(0, .2, by = .1),2), expand = c(0, 0)) + 
-  theme(#plot.margin = unit(c(0.,0.,0,0), "lines"),
-    axis.text.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    axis.title.x=element_blank(),
-    axis.text.x=element_blank()) #axis.ticks.x=element_blank())
-plot1
-
-posterior <- as.array(m2)
-plt2 <- mcmc_areas(
-  posterior, 
-  pars = c("b_yr"),
-  prob = 0.95, # 80% intervals
-  #prob_outer = 0.99, # 99%
-  point_est = "mean"#  border_size = .1
-)
-plt2
-plot2 <- plt2 + 
-  ylab("") + xlab("Intrinsic rate of increase") +
-  scale_y_continuous(expand = c(0,0)) +
-  #expand_limits(y = 2) +
-  geom_vline(xintercept=0, linetype=2) +
-  #ylim(0,1)+
-  theme_cowplot() +
-  annotate('text', x=-.05, y=1.5, label= "Fires 3yr\n(Acre)", size = 4) +
-  scale_y_discrete(labels = c(''), expand = c(0.0, 0.)) +
-  scale_x_continuous(limits = c(-.09,.25), breaks = round(seq(0, .2, by = .1),2), expand = c(0, 0)) + 
-  theme(#plot.margin = unit(c(0.,0.,0,0), "lines"),
-    axis.text.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    axis.title.x=element_blank(),
-    axis.text.x=element_blank())#  axis.ticks.x=element_blank())
-plot2
-
-color_scheme_set("blue")
-posterior <- as.array(m3)
-plt3 <- mcmc_areas(
-  posterior, 
-  pars = c("b_year"),
-  prob = 0.95, # 80% intervals
-  #prob_outer = 0.99, # 99%
-  point_est = "mean"#  border_size = .1
-)
-plt3
-plot3 <- plt3 + 
-  ylab("Density") + #xlab("Exponential growth parameter") +
-  scale_y_continuous(expand = c(0,0)) +
-  #expand_limits(y = 2) +
-  geom_vline(xintercept=0, linetype=2) +
-  #ylim(0,1)+
-  theme_cowplot() +
-  annotate('text', x=-.05, y=1.5, label= "Cleared area\n(Acre)", size = 4) +
-  scale_y_discrete(labels = c(''), expand = c(0.0, 0.)) +
-  scale_x_continuous(limits = c(-.09,.25), breaks = round(seq(0, .2, by = .1),2), expand = c(0, 0)) + 
-  theme(#plot.margin = unit(c(0.,0.,0,0), "lines"),
-    axis.text.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    axis.title.x=element_blank(),
-    axis.text.x=element_blank()) #axis.ticks.x=element_blank())
-plot3
-
-posterior <- as.array(m4)
-plt4 <- mcmc_areas(
-  posterior, 
-  pars = c("b_year"),
-  prob = 0.95, # 80% intervals
-  #prob_outer = 0.99, # 99%
-  point_est = "mean"#  border_size = .1
-)
-plt4
-plot4 <- plt4 + 
-  ylab("") + #xlab("Exponential growth parameter") +
-  scale_y_continuous(expand = c(0,0)) +
-  #expand_limits(y = 2) +
-  geom_vline(xintercept=0, linetype=2) +
-  #ylim(0,1)+
-  theme_cowplot() +
-  annotate('text', x=-.045, y=1.5, label= "Cleared area 3yr\n(Acre)", size = 4) +
-  scale_y_discrete(labels = c(''), expand = c(0.0, 0.)) +
-  scale_x_continuous(limits = c(-.09,.25), breaks = round(seq(0, .2, by = .1),2), expand = c(0, 0)) + 
-  theme(#plot.margin = unit(c(0.,0.,0,0), "lines"),
-    axis.text.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    axis.title.x=element_blank(),
-    axis.text.x=element_blank()) #axis.ticks.x=element_blank())
-plot4
-
-posterior <- as.array(m5)
-plt5 <- mcmc_areas(
-  posterior, 
-  pars = c("b_year"),
-  prob = 0.95, # 80% intervals
-  #prob_outer = 0.99, # 99%
-  point_size = 1,
-  point_est = "mean"#  border_size = .1
-)
-plt5
-plot5 <- plt5 + 
-  ylab("") + xlab("Intrinsic rate of increase") +
-  scale_y_continuous(expand = c(0,0)) +
-  #expand_limits(y = 2) +
-  geom_vline(xintercept=0, linetype=2) +
-  #ylim(0,1)+
-  theme_cowplot() +
-  annotate('text', x=-.05, y=1.5, label= "Cleared area\n(Yanomami)", size = 4) +
-  scale_y_discrete(labels = c(''), expand = c(0.0, 0.)) +
-  scale_x_continuous(limits = c(-.09,.25), breaks = round(seq(0, .2, by = .1),2), expand = c(0, 0)) + 
-  theme(#plot.margin = unit(c(0.,0.,0,0), "lines"),
-        axis.text.y = element_blank(),
-        axis.ticks.y = element_blank())
-        #axis.title.x=element_blank(),
-        #axis.text.x=element_blank(),
-        #axis.ticks.x=element_blank())
-plot5
-
-posterior <- as.array(m6)
-plt6 <- mcmc_areas(
-  posterior, 
-  pars = c("b_year"),
-  prob = 0.95, # 80% intervals
-  #prob_outer = 0.99, # 99%
-  point_est = "mean"#  border_size = .1
-)
-plt6
-plot6 <- plt6 + 
-  ylab("") + xlab("Intrinsic rate of increase") +
-  scale_y_continuous(expand = c(0,0)) +
-  #expand_limits(y = 2) +
-  geom_vline(xintercept=0, linetype=2) +
-  #ylim(0,1)+
-  theme_cowplot() +
-  annotate('text', x=-.045, y=1.5, label= "Cleared area 6yr\n(Yanomami)", size = 4) +
-  scale_y_discrete(labels = c(''), expand = c(0.0, 0.)) +
-  scale_x_continuous(limits = c(-.09,.25), breaks = round(seq(0, .2, by = .1),2), expand = c(0, 0)) + 
-  theme(#plot.margin = unit(c(0.,0.,0,0), "lines"),
-    axis.text.y = element_blank(),
-    axis.ticks.y = element_blank())
-#axis.title.x=element_blank(),
-#axis.text.x=element_blank(),
-#axis.ticks.x=element_blank())
-plot6
-
-figure <- ggarrange(plot1, plot2, plot3, plot4, plot5, plot6,
-                    #label.x = c(.1, .1, .1, .1, .1, .1), 
-                    # hjust=c(-.3, -.3), vjust=0,
-                    #label.y = 1, label.x = 2,
-                    #labels = c("Fires\nAcre", "Fires 3yr", 'Deforestation', 'Deforestation 3yr',
-                    #           'Deforestation\nYanomami', 'Deforestation 6yr\nYanomami'),
-                    ncol = 2, nrow = 3, align="hv")
-figure
-ggsave("fig5 posteriors.pdf") #, units = "in", height = 6, width=8)
 
 library(magick)
 world <- ne_countries(scale = "medium", returnclass = "sf")
@@ -660,5 +388,4 @@ ggplot(world) +
         panel.grid.minor = element_blank())
 
 ggsave("fig1 map.pdf", dpi=500, units = "in", height = 8, width=8)
-              
-              
+
