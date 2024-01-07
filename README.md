@@ -1,8 +1,8 @@
 # uncontacted
 Growth of isolated indigenous metapopulations
 
-## Paper title
-Scripts are for the 2023 manuscript: Walker RS, MV Flinn, SP Prall, MJ Hamilton. Remote sensing evidence for population growth of isolated indigenous societies in Amazonia. Scientific Reports 13:22448.
+## Publication
+Scripts are for the 2023 publication: Walker RS, MV Flinn, SP Prall, MJ Hamilton. Remote sensing evidence for population growth of isolated indigenous societies in Amazonia. Scientific Reports 13:22448.
 https://www.nature.com/articles/s41598-023-50127-y
 
 ## Data
